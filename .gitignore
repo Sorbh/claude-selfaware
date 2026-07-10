@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Runtime artifacts (created after install, not part of the skill)
+*.log
+keepalive.log
+.usage-cache*
+TASK_STATE.md

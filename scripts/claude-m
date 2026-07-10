@@ -1,0 +1,97 @@
+#!/bin/bash
+# ============================================================
+# claude-m — Marathon launcher for selfaware.
+#
+# Launches Claude inside a tmux session (reusing the existing
+# claude-tmux launcher when present), TAGS the session with
+# @claude_marathon=1, and ensures the shared marathon-daemon is
+# running. The daemon then makes the session wind down at the
+# usage limit and auto-resumes it after the window resets.
+#
+#   claude-m                     # session named from the current dir
+#   claude-m sorbh               # session named "sorbh"
+#   claude-m sorbh fix the parser# name "sorbh" + initial prompt "fix the parser"
+#   claude-m -n sorbh -p "task"  # explicit flags (same result)
+#
+# macOS compatible.
+# ============================================================
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink "${BASH_SOURCE[0]}" || echo "${BASH_SOURCE[0]}")")" && pwd)"
+# When invoked via the ~/.local/bin symlink, resolve to the real skill dir.
+if [ ! -f "$SCRIPT_DIR/marathon-daemon.sh" ]; then
+  SCRIPT_DIR="$HOME/.claude/skills/selfaware/scripts"
+fi
+
+TAG="@claude_marathon"
+PIDFILE="${MARATHON_PIDFILE:-/tmp/claude-marathon-daemon.pid}"
+DAEMON="$SCRIPT_DIR/marathon-daemon.sh"
+
+command -v tmux >/dev/null 2>&1 || { echo "claude-m: tmux is required."; exit 1; }
+
+# ---- Parse args ----
+#   First bare positional = session NAME; any following words = initial PROMPT.
+#   -n/--name and -p/--prompt override/set them explicitly.
+NAME=""
+TASK=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -n|--name)   NAME="${2:-}"; shift 2 || shift $# ;;
+    -p|--prompt) TASK="${2:-}"; shift 2 || shift $# ;;
+    -*)          echo "claude-m: unknown option '$1'"; exit 1 ;;
+    *)           if [ -z "$NAME" ]; then NAME="$1"; else TASK="${TASK:+$TASK }$1"; fi; shift ;;
+  esac
+done
+
+# ---- Derive a session name if none was given, then sanitize for tmux ----
+if [ -z "$NAME" ]; then
+  NAME="$(basename "$PWD")"
+fi
+NAME="$(echo "$NAME" | tr ' .:' '---' | tr -cd '[:alnum:]-_')"
+[ -z "$NAME" ] && NAME="claude"
+
+# ---- Uniquify against existing sessions ----
+base="$NAME"; n=2
+while tmux has-session -t "$NAME" 2>/dev/null; do NAME="${base}-${n}"; n=$((n+1)); done
+
+echo "claude-m: launching marathon session '$NAME'"
+
+# ---- Ensure the shared daemon is running (it self-guards against dupes) ----
+ensure_daemon() {
+  local pid; pid="$(cat "$PIDFILE" 2>/dev/null || echo "")"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then return; fi
+  nohup "$DAEMON" >> "$HOME/.claude/marathon-daemon.log" 2>&1 &
+}
+
+# ---- Background: wait for the session to exist, tag it, start the daemon,
+#      and (optionally) send the initial task. Runs while the foreground
+#      launcher holds the terminal. ----
+(
+  for _ in $(seq 1 60); do
+    tmux has-session -t "$NAME" 2>/dev/null && break
+    sleep 0.5
+  done
+  if tmux has-session -t "$NAME" 2>/dev/null; then
+    tmux set-option -t "$NAME" "$TAG" 1 2>/dev/null
+    ensure_daemon
+    if [ -n "$TASK" ]; then
+      sleep 4   # let claude finish loading
+      tmux send-keys -t "$NAME" "$TASK" 2>/dev/null; sleep 1
+      tmux send-keys -t "$NAME" Enter 2>/dev/null
+    fi
+  fi
+) &
+
+# ---- Foreground launch ----
+# Self-contained by default: create a plain tmux session running claude, so
+# claude-m never depends on whatever external launcher is on PATH.
+# To reuse a personal launcher instead (e.g. claude-tmux), opt in explicitly:
+#   CLAUDE_M_LAUNCHER=claude-tmux claude-m ...
+if [ -n "${CLAUDE_M_LAUNCHER:-}" ] && command -v "$CLAUDE_M_LAUNCHER" >/dev/null 2>&1; then
+  exec "$CLAUDE_M_LAUNCHER" -s "$NAME"
+else
+  tmux new-session -d -s "$NAME" 2>/dev/null || true
+  tmux send-keys -t "$NAME" "claude" Enter
+  exec tmux attach-session -t "$NAME"
+fi
