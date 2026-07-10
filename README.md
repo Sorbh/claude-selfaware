@@ -8,16 +8,9 @@ A self-contained skill folder (`SKILL.md` + bundled scripts), auto-discovered fr
 
 ## Why This Exists
 
-Claude Code runs on rolling usage windows — a 5-hour limit and a weekly one. Hit one mid-task and the session stops cold: you lose flow, and worse, work can be left half-finished with no record of where it was. Out of the box Claude has **no awareness of its own usage**, so it can't see the wall coming or plan around it.
+I kept starting **long-running tasks** that would exhaust the usage limit halfway through — and stall until I came back to restart them. I wanted the task to **checkpoint before the wall and resume on its own once the limit resets**, unattended. That's what `selfaware` does: Claude watches its own usage, saves progress to `TASK_STATE.md` before hitting the limit, and picks up where it left off after the window resets (the marathon above).
 
-`selfaware` closes that gap. It gives Claude a live read on its remaining capacity and the logic to act on it *before* the limit hits:
-
-- **See it coming** — hooks check usage every turn, silently, and surface a directive only when it matters.
-- **Stretch the budget** — at 80%+, hand independent work to Codex instead of burning Claude tokens.
-- **Never lose work** — at 90%, checkpoint to `TASK_STATE.md` and stop with a buffer.
-- **Resume unattended** — after the window resets, pick up exactly where it left off (the marathon above).
-
-The payoff: long refactors, agentic runs, and overnight marathons survive limit resets without you babysitting the session.
+It helps in **normal sessions** too: you get a quiet nudge as the limit gets close, so Claude can wrap up cleanly and checkpoint instead of getting cut off mid-thought.
 
 ## Behavior
 
