@@ -44,9 +44,10 @@ Ask either agent something like "how much usage do I have left?" or "when does m
 
 ```
 5h 40% ↻1h21m · 7d 67%
+5h 85% ↻1h20m ⚠38m · 7d 68%
 ```
 
-A `⚠` is added when you're on pace to hit a limit. If you already have a status line script, append its output, e.g.:
+`⚠38m` next to a limit means you're on pace to hit it in 38 minutes, before it resets; `⛔` means it's already reached. If you already have a status line script, append its output, e.g.:
 
 ```sh
 usage=$(~/.claude/skills/selfaware/scripts/statusline.sh </dev/null)
